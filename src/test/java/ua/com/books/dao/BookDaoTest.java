@@ -60,9 +60,9 @@ public class BookDaoTest {
 
         try {
             bookDao.save(testBook);
+            fail("Exception should be thrown while saving Book with Isbn = null!");
         } catch(Exception e) {
             assertEquals(RuntimeException.class, e.getClass());
-            assertEquals(ERROR_SAVING_ENTITY.formatMessageWithClassName(testBook), e.getMessage());
         }
 
         List<Book> afterSaveBooks = bookDao.findAll();
