@@ -1,5 +1,7 @@
 package ua.com.books.dao;
 
+import ua.com.books.functions.TransactionConsumer;
+import ua.com.books.functions.TransactionFunction;
 import ua.com.books.model.Book;
 
 import javax.sql.DataSource;
@@ -24,63 +26,62 @@ public class BookDaoImpl implements BookDao {
 
     @Override
     public Long save(Book book) {
-        try (Connection connection = dataSource.getConnection()) {
-            return saveBookAndAuthors(connection, book);
-        } catch(SQLException e) {
-            throw new RuntimeException(ERROR_SAVING_ENTITY.formatMessageWithClassName(book), e);
-        }
+        return apply(connection -> saveBookAndAuthors(connection, book));
     }
 
     @Override
     public List<Book> findAll() {
-        try (Connection connection = dataSource.getConnection()) {
-            return findAllBooks(connection);
-        } catch (SQLException e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
+        return apply(connection -> findAllBooks(connection));
     }
 
     @Override
     public Book findById(Long id) {
-        try (Connection connection = dataSource.getConnection()) {
-            return findBookById(connection, id);
-        } catch (SQLException e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
+        return apply(connection -> findBookById(connection, id));
     }
 
     @Override
     public void update(Book book) {
-        try (Connection connection = dataSource.getConnection()) {
-            updateBook(connection, book);
-        } catch (SQLException e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
+        execute(connection -> updateBook(connection, book));
     }
 
     @Override
     public void delete(Long id) {
-        try (Connection connection = dataSource.getConnection()) {
-            deleteBook(connection, id);
-        } catch (SQLException e) {
-            throw new RuntimeException(e.getMessage(), e);
-        }
+        execute(connection -> deleteBook(connection, id));
     }
 
     @Override
     public List<Book> findBooksByAuthorFirstName(String authorFirstName) {
+        return apply(connection -> findBooksByAuthorName(connection, authorFirstName));
+    }
+
+    private <R> R apply(TransactionFunction<R> function) {
         try (Connection connection = dataSource.getConnection()) {
-            return findBooksByAuthorName(connection, authorFirstName);
+            return function.applyInTransaction(connection);
         } catch (SQLException e) {
             throw new RuntimeException(e.getMessage(), e);
         }
     }
 
+    private void execute(TransactionConsumer consumer) {
+        try (Connection connection = dataSource.getConnection()) {
+            consumer.executeInTrasaction(connection);
+        } catch (SQLException e) {
+            throw new RuntimeException(e.getMessage(), e);
+        }
+
+    }
+
     private Long saveBookAndAuthors(Connection connection, Book book) throws SQLException {
-        Long bookId = saveBook(connection, book);
-        List<Long> authorsIds = authorDao.save(book.getAuthors());
-        saveBookAuthor(connection, bookId, authorsIds);
-        return bookId;
+        try {
+            Long bookId = saveBook(connection, book);
+            List<Long> authorsIds = authorDao.save(book.getAuthors());
+            saveBookAuthor(connection, bookId, authorsIds);
+            connection.commit();
+            return bookId;
+        } catch(SQLException e) {
+            connection.rollback();
+            throw e;
+        }
     }
 
     private Long saveBook(Connection connection, Book book) throws SQLException {
